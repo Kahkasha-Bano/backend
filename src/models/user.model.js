@@ -18,8 +18,10 @@ const userSchema= new Schema({
         lowercase:true,
         trim: true,
     },
-     watchHistory: Schema.Types.ObjectId,
-     ref: "Video",
+     watchHistory:[ {
+        type: Schema.Types.ObjectId,
+        ref: "Video",
+     }],
      fullName:{
         type:String,
         required: true,
@@ -43,8 +45,8 @@ const userSchema= new Schema({
 });
 
 userSchema.pre("save", async function(next) {
-    if(!this.isModeified("password"));
-    this.password= bcrypt.hash(this.password,10)
+    if(!this.isModified("password"))
+    this.password= await bcrypt.hash(this.password,10)
     next()
 })
 
