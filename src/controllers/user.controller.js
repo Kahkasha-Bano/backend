@@ -5,7 +5,8 @@ import User from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
  const registerUser = asyncHandler( async (req, res) => {
-    console.log("Received Files:", req.files);
+    console.log("Received Files: ", req.files);  // ✅ Log files to debug
+    console.log("Received Body:", req.body); 
     // get user details from frontend
     // validation - not empty
     // check if user already exists: username, email
@@ -29,6 +30,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
     const existedUser = await User.findOne({
         $or: [{ username }, { email }]
     })
+    console.log(req.files);
 
     if (existedUser) {
         throw new ApiError(409, "User with email or username already exists")
@@ -37,8 +39,14 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 
     const avatarLocalPath = req.files?.avatar?.[0]?.path
     //const coverImageLocalPath = req.files?.coverImage[0]?.path;
+    //console.log(avatarLocalPath)
 
-    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+    //const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+
+    let coverImageLocalPath;
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
+        coverImageLocalPath=req.files.coverImage[0].path;
+    }
 
     
 
@@ -49,6 +57,8 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
     const avatar = await uploadOnCloudinary(avatarLocalPath)
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
+    console.log(avatar)
+    console.log(avatar?.url)
     if (!avatar || !avatar?.url) {
         throw new ApiError(400, "Avatar file is required")
     }
@@ -76,6 +86,13 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
     )
 
 } )
+
+export const uploadAvatar = (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: "Avatar file is required" });
+    }
+    res.json({ message: "File uploaded successfully", filename: req.file.filename });
+};
 
 export {
     registerUser,

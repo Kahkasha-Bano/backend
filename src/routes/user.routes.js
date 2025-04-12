@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { registerUser } from "../controllers/user.controller.js";
+import { registerUser, uploadAvatar } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js"
 
 
@@ -17,6 +17,8 @@ router.route("/register").post(
         }
     ]),
     registerUser);
+
+    router.post("/upload-avatar", upload.single("avatar"), uploadAvatar); 
 
 export default router;
 
