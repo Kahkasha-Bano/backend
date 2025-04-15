@@ -1,8 +1,12 @@
+import mongoose from "mongoose";
+
 import {asyncHandler} from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import User from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { verifyJWT } from "../middlewares/auth.middleware.js";
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshTokens=async (userId)=>{
     try{
@@ -165,9 +169,9 @@ const loginUser=asyncHandler(async(req,res) => {
 const logoutUser = asyncHandler(async (req,res) =>{
    await  User.findByIdAndUpdate(
         req.user._id,{
-            $set:
+            $unset:
             {refreshToken:
-                undefined
+                1
             }
         },{
             new:true
@@ -197,7 +201,7 @@ try {
         process.env.REFRESH_TOKEN_SECRET
     )
     
-    const user= User.findById(decodedToken?._id)
+    const user= await User.findById(decodedToken?._id)
     if(!user)
         {
             throw new ApiError(401," invalid refresh token")
@@ -212,7 +216,7 @@ try {
             secure: true
         }
     
-        const {accessToken, refreshToken}= await generateAccessAndRefreshTokens(user._id)
+        const {accessToken, refreshToken: newRefreshToken}= await generateAccessAndRefreshTokens(user._id)
     
         return res.status(200)
         .cookie("accessToken",accessToken, options)
@@ -342,72 +346,77 @@ return res
 )
 })
 
-const getUserChannelProfile= asyncHandler(async(req, res)=>{
-    const {username}= req.params
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params;
 
-    if(!username?.trim()){
-        throw new ApiError(400, "Username is missing")
+    if (!username?.trim()) {
+        throw new ApiError(400, "Username is missing");
     }
+    console.log("Username:", username);
 
-    const channel= await User.aggregate([
+    // Fetch the channel and related data
+    const channel = await User.aggregate([
+        { $match: { username: username.toLowerCase() } },
         {
-            $match:{
-                username: username?.toLowerCase()
-            }
-        },
-        {
-            $lookup:{
+            $lookup: {
                 from: "subscriptions",
                 localField: "_id",
                 foreignField: "channel",
                 as: "subscribers"
             }
         },
-        {$lookup:{
-            from: "subscriptions",
-            localField: "_id",
-            foreignField: "subscriber",
-            as: "subscribedTo"
-        }},
         {
-            $addFields:{
-                subscribersCount:{
-                    $size:"subscribers"
-                },
-                channelsSubscribedToCount:{
-                     $size: "$subscribedTo"
-                },
-                isSuscribed:{
-                    $cond:{
-                        if:{$in: [req.user?._id, "$subscribers.subscriber"]},
-                        then: true,
-                        else: false,
-                    }
-                }
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: { $size: "$subscribers" },
+                channelsSubscribedToCount: { $size: "$subscribedTo" }
             }
         },
         {
             $project: {
-                fullName:1,
+                fullName: 1,
                 username: 1,
-                subscribersCount:1,
-                channelsSubscribedToCount:1,
-                isSuscribed:1,
-                email:1,
-                avatar:1,
-                coverImage:1
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                email: 1,
+                avatar: 1,
+                coverImage: 1,
+                subscribers: 1 // needed for isSubscribed calculation
             }
         }
-    ])
-    if(!channel?.length){
-        throw new ApiError(404, "Channel does not exists")
+    ]);
+
+    if (!channel?.length) {
+        throw new ApiError(404, "Channel does not exist");
     }
 
-    return res.status(200)
-    .json(
-        new ApiResponse(200, "User channel fetched successfully")
-    )
-})
+    const channelData = channel[0];
+
+    // Ensure req.user is defined
+    if (!req.user || !req.user._id) {
+        throw new ApiError(401, "User not authenticated");
+    }
+
+    // Check if the user is subscribed to the channel
+    const isSubscribed = channelData?.subscribers?.some(
+        (sub) => sub.subscriber.toString() === req.user._id.toString()
+    );
+
+    // Add the isSubscribed field to the response data
+    channelData.isSubscribed = isSubscribed;
+
+    return res.status(200).json(
+        new ApiResponse(200, channelData, "User channel fetched successfully")
+    );
+});
+
 
 
 const getWatchHistory= asyncHandler(async(req,res)=>{
